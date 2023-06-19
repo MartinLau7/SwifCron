@@ -10,21 +10,22 @@ import Foundation
 public struct SwifCron {
     /// String expression
     public let expression: String
-    
+
     /// Internal expression mode
     enum ExpressionMode {
         case anyDayOfWeek, exactDayOfWeekButAnyDom, mixed
     }
+
     let mode: ExpressionMode
-    
+
     let sixValues: Bool
     let anySecond: Bool
     let anyMinute: Bool
     let anyHour: Bool
-    
+
     /// Parsed parts of cron expression
     let seconds, minutes, hours, daysOfMonth, months, daysOfWeek: [Int]
-    
+
     /**
      Supports only digit values yet
      - parameters:
@@ -34,7 +35,7 @@ public struct SwifCron {
      - dayOfMonth: expression string
      - month: expression string (doesn't suppoer name of month, only digits)
      - dayOfWeek: expression string (sunday is 0, doesn't support name of day, so use only digits)
-     
+
      - supported values:
      - *: for any value
      - -: to set periods like `1-10`
@@ -44,7 +45,7 @@ public struct SwifCron {
     public init(_ expression: String) throws {
         self.expression = expression
         let parts = expression.components(separatedBy: " ")
-        
+
         // add new seconds parameter (Quartz cron) but leave backward compatibility with UNIX cron
         guard parts.count == 5 || parts.count == 6 else {
             throw SwifCronError(reason: "Cron string should contain 5 or 6 parts separated by space")
@@ -56,19 +57,19 @@ public struct SwifCron {
         } else {
             sixValues = false
         }
-        
+
         if parts[offset + 4] == "*" {
             mode = .anyDayOfWeek
-        } else if parts[offset + 2] == "*" && parts[offset + 3] == "*" && parts[offset + 4] != "*" {
+        } else if parts[offset + 2] == "*", parts[offset + 3] == "*", parts[offset + 4] != "*" {
             mode = .exactDayOfWeekButAnyDom
         } else {
             mode = .mixed
         }
-        
+
         anySecond = offset == 0 ? false : parts[0] == "*"
         anyMinute = parts[offset + 0] == "*"
         anyHour = parts[offset + 1] == "*"
-        
+
         // Cron expression parsed values
         seconds = offset == 0 ? [0] : try ExpressionParser.parse(part: parts[0], .seconds)
         minutes = try ExpressionParser.parse(part: parts[offset + 0], .minutes)
@@ -77,7 +78,7 @@ public struct SwifCron {
         months = try ExpressionParser.parse(part: parts[offset + 3], .months)
         daysOfWeek = try ExpressionParser.parse(part: parts[offset + 4], .daysOfWeek)
     }
-    
+
     /* Returns a next date based on cron string expression
      *
      * You could use:
@@ -91,11 +92,11 @@ public struct SwifCron {
     public func next(from date: Date = Date()) throws -> Date {
         // Calendar with UTC-0 time zone
         var calendar = Calendar(identifier: .gregorian)
-        guard let timeZone = TimeZone(secondsFromGMT: 0) else {
-            throw SwifCronError(reason: "Unable to get UTC+0 time zone")
-        }
-        calendar.timeZone = timeZone
-        
+        // guard let timeZone = TimeZone(secondsFromGMT: 0) else {
+        //     throw SwifCronError(reason: "Unable to get UTC+0 time zone")
+        // }
+        calendar.timeZone = TimeZone.current
+
         // Value for `from` date
         let currentSecond = calendar.component(.second, from: date)
         let currentMinute = calendar.component(.minute, from: date)
@@ -104,10 +105,10 @@ public struct SwifCron {
         let currentMonth = calendar.component(.month, from: date)
         let currentDayOfWeek = calendar.component(.weekday, from: date) - 1
         let currentYear = calendar.component(.year, from: date)
-        
+
         // Looking for the right next date
         var nextSecond = try Helper.findNext(current: currentSecond, from: seconds, offset: sixValues ? 1 : 0)
-        
+
         // additional check for minute. If current time is 20:10:05, next will be 20:10:06, not 20:11:06
         var nextMinute = try Helper.findNext(current: currentMinute, from: minutes, offset: anyMinute && !sixValues ? 1 : 0)
 
@@ -125,13 +126,13 @@ public struct SwifCron {
         if nextHour.value - currentHour > 0 {
             nextMinute.value = minutes[0]
         }
-        
+
         // Not every month contains 31 day, so we should exclude non-existing days
         let filteredDaysOfMonth = try Helper.filterDaysOfMonth(month: currentMonth, year: currentYear, days: daysOfMonth)
-        
+
         var nextDayOfMonth = try Helper.findNext(current: currentDayOfMonth, from: filteredDaysOfMonth, offset: nextHour.offset)
         var nextMonth = try Helper.findNext(current: currentMonth, from: months, offset: nextDayOfMonth.offset)
-        
+
         if nextDayOfMonth.value - currentDayOfMonth > 0 {
             nextSecond.value = seconds[0]
             nextMinute.value = minutes[0]
@@ -150,7 +151,7 @@ public struct SwifCron {
             nextDayOfMonth.value = daysOfMonth[0]
             nextMonth.value = months[0]
         }
-        
+
         switch mode {
         case .anyDayOfWeek:
             return try Helper.getNextDateByDom(second: nextSecond.value,
